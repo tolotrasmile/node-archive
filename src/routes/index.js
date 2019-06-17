@@ -1,63 +1,60 @@
 const express = require("express");
-const rimraf = require("rimraf");
 const archiver = require("archiver");
 const contentDisposition = require("content-disposition");
-const { executeAsync, mkdirAsync } = require("../utils");
+const { executeAsync, mkdirAsync, rimrafAsync, log } = require("../utils");
 const router = express.Router();
 
-router.get("/", (req, res, next) => {
+router.get("/", (_, res) => {
   res.send("Hello from index again.");
 });
 
-const time = () => {
-  const [first, second] = process.hrtime();
-  return first * 1000000 + second / 1000;
-};
-
-router.get("/test", async (req, res, next) => {
+router.get("/test", async (_, res) => {
   try {
     const contentDispo = contentDisposition(`${new Date().getTime()}.zip`);
     res.header("Content-Type", `application/zip`);
     res.header("Content-Disposition", contentDispo);
-
-    const startHrTime = process.hrtime();
-
-    const directoryPath = `./generated/${new Date().getTime()}`;
-    await mkdirAsync(directoryPath);
-
-    console.log("Converting...");
-    await executeAsync(
-      `convert -density 300 test.pdf -trim "${directoryPath}/image.jpeg"`
-    );
-
-    console.log("Conversion succedeed.");
-
-    const archive = archiver("zip", {
-      zlib: { level: 9 } // Sets the compression level.
-    });
-
-    archive.pipe(res);
-    archive.directory(`${directoryPath}`, false);
-
-    res.on("finish", () => {
-      console.log("file downloaded from: ", `${directoryPath}`);
-      rimraf(directoryPath, error => {
-        if (error) {
-          console.log("Error when deleting temp directory", `${directoryPath}`);
-        } else {
-          console.log("Temp directory deleted:", `${directoryPath}`);
-        }
-        const elapsedHrTime = process.hrtime(startHrTime);
-        const elapsedHrTimeMs =
-          elapsedHrTime[0] * 1000 + elapsedHrTime[1] / 1e6;
-        console.warn(`[Response] > ${elapsedHrTimeMs} ms`);
-      });
-    });
-
-    archive.finalize();
+    await convertFile("test.pdf", res);
   } catch (error) {
     console.error(error);
   }
 });
+
+async function convertFile(file, response) {
+  const startHrTime = process.hrtime();
+
+  const directoryPath = `./generated/${new Date().getTime()}`;
+  await mkdirAsync(directoryPath);
+
+  log("Converting...");
+
+  await executeAsync(
+    `convert -density 300 "${file}" -trim "${directoryPath}/image.jpeg"`
+  );
+
+  log("Conversion succedeed.");
+
+  const archive = archiver("zip", {
+    zlib: { level: 9 } // Sets the compression level.
+  });
+
+  archive.pipe(response);
+  archive.directory(`${directoryPath}`, false);
+
+  response.on("finish", async () => {
+    log("File downloaded from: ", `${directoryPath}`);
+    try {
+      await rimrafAsync(directoryPath);
+      log("Temp directory deleted:", `${directoryPath}`);
+    } catch (error) {
+      log(error);
+      log("Error when deleting temp directory", `${directoryPath}`);
+    }
+    const elapsedHrTime = process.hrtime(startHrTime);
+    const elapsedHrTimeMs = elapsedHrTime[0] * 1000 + elapsedHrTime[1] / 1e6;
+    log(`Response > ${elapsedHrTimeMs} ms`);
+  });
+
+  archive.finalize();
+}
 
 module.exports = router;
