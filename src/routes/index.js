@@ -20,15 +20,16 @@ router.get("/test", async (req, res, next) => {
     res.header("Content-Type", `application/zip`);
     res.header("Content-Disposition", contentDispo);
 
+    const startHrTime = process.hrtime();
+
     const directoryPath = `./generated/${new Date().getTime()}`;
     await mkdirAsync(directoryPath);
-
-    console.log("begin time", time());
 
     console.log("Converting...");
     await executeAsync(
       `convert -density 300 test.pdf -trim "${directoryPath}/image.jpeg"`
     );
+
     console.log("Conversion succedeed.");
 
     const archive = archiver("zip", {
@@ -46,7 +47,10 @@ router.get("/test", async (req, res, next) => {
         } else {
           console.log("Temp directory deleted:", `${directoryPath}`);
         }
-        console.log("end time", time());
+        const elapsedHrTime = process.hrtime(startHrTime);
+        const elapsedHrTimeMs =
+          elapsedHrTime[0] * 1000 + elapsedHrTime[1] / 1e6;
+        console.warn(`[Response] > ${elapsedHrTimeMs} ms`);
       });
     });
 
